@@ -19,8 +19,17 @@ dependencies {
     compile group: 'io.netty', name: 'netty-common', version: '4.1.11.Final'
     compileOnly 'org.spongepowered:spongeapi:7.3.0'
     annotationProcessor 'org.spongepowered:spongeapi:7.3.0'
-    implementation 'com.github.mjra007:PlayerStorage-Sponge:-SNAPSHOT'
+    implementation 'com.github.mjra007:PlayerStorage-Sponge:master-SNAPSHOT'
     implementation 'com.github.randombyte-developer:holograms:v3.2.1'
 }
+
+task copyJarToBin {
+    copy {
+        from 'build/libs/MobEconomy-1.0-SNAPSHOT.jar'
+        into 'D:/IntelijIdeaProjects/miningExpertise/run/forge/mods'
+    }
+}
+
+
 
 sponge.plugin.id = 'mobeconomy'
