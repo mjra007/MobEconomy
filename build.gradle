@@ -17,10 +17,13 @@ repositories {
 
 dependencies {
     compile group: 'io.netty', name: 'netty-common', version: '4.1.11.Final'
+
     compileOnly 'org.spongepowered:spongeapi:7.3.0'
+    compileOnly 'net.luckperms:api:5.2'
+
     annotationProcessor 'org.spongepowered:spongeapi:7.3.0'
-    implementation 'com.github.mjra007:PlayerStorage-Sponge:master-SNAPSHOT'
-    implementation 'com.github.randombyte-developer:holograms:v3.2.1'
+
+     implementation 'com.github.randombyte-developer:holograms:v3.2.1'
 }
 
 task copyJarToBin {
@@ -29,7 +32,6 @@ task copyJarToBin {
         into 'D:/IntelijIdeaProjects/miningExpertise/run/forge/mods'
     }
 }
-
 
 
 sponge.plugin.id = 'mobeconomy'

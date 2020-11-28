@@ -1,26 +1,46 @@
 package uk.enchantedoasis.mobeconomy.mobeconomy;
 
-import com.github.mjra007.sponge.Storage;
-import com.github.mjra007.sponge.UsersDataBank;
 import com.google.common.reflect.TypeToken;
 import com.google.inject.Inject;
 import de.randombyte.holograms.api.HologramsService;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import net.luckperms.api.LuckPerms;
+import net.luckperms.api.cacheddata.CachedMetaData;
+import net.luckperms.api.cacheddata.CachedPermissionData;
+import net.luckperms.api.model.data.DataMutateResult;
+import net.luckperms.api.model.user.User;
+import net.luckperms.api.node.Node;
+import net.luckperms.api.node.NodeEqualityPredicate;
+import net.luckperms.api.node.metadata.NodeMetadataKey;
+import net.luckperms.api.node.types.MetaNode;
+import net.luckperms.api.node.types.PermissionNode;
 import ninja.leaping.configurate.ConfigurationOptions;
 import ninja.leaping.configurate.commented.CommentedConfigurationNode;
 import ninja.leaping.configurate.hocon.HoconConfigurationLoader;
 import ninja.leaping.configurate.loader.ConfigurationLoader;
 import ninja.leaping.configurate.objectmapping.ObjectMappingException;
 import org.spongepowered.api.Sponge;
+import org.spongepowered.api.command.CommandException;
+import org.spongepowered.api.command.CommandResult;
+import org.spongepowered.api.command.CommandSource;
+import org.spongepowered.api.command.args.CommandContext;
+import org.spongepowered.api.command.args.GenericArguments;
+import org.spongepowered.api.command.source.CommandBlockSource;
+import org.spongepowered.api.command.spec.CommandExecutor;
+import org.spongepowered.api.command.spec.CommandSpec;
 import org.spongepowered.api.config.ConfigDir;
 import org.spongepowered.api.config.DefaultConfig;
+import org.spongepowered.api.entity.living.player.Player;
 import org.spongepowered.api.event.Listener;
 import org.spongepowered.api.event.game.state.GamePostInitializationEvent;
 import org.spongepowered.api.event.game.state.GameStartedServerEvent;
 import org.spongepowered.api.event.game.state.GameStoppedServerEvent;
 import org.spongepowered.api.plugin.Dependency;
 import org.spongepowered.api.plugin.Plugin;
+import org.spongepowered.api.service.ProviderRegistration;
 import org.spongepowered.api.service.economy.EconomyService;
-import uk.enchantedoasis.mobeconomy.mobeconomy.listeners.PlayerKillMob;
+import org.spongepowered.api.text.Text;
 
 
 import java.io.File;
@@ -41,17 +61,19 @@ import java.util.Optional;
         }
 )
 
-public class MobEconomy {
+public class MobEconomy implements CommandExecutor {
 
     private static MobEconomy instance;
 
-    private UsersDataBank usersDataBank;
+    public static final String PLAYER_MULTIPLIER_METADATA = "MOBECONOMY_PLAYER_MULTIPLIER";
+
+    private LuckPerms luckyPermsProvider;
 
     private EconomyService economyService;
 
     private HologramsService hologramsService;
 
-    private PlayerKillMob playerKillMob;
+    private PlayerKillMobListener playerKillMob;
 
     @Inject
     public org.slf4j.Logger Logger;
@@ -68,6 +90,7 @@ public class MobEconomy {
 
     CommentedConfigurationNode commentedConfigurationNode;
 
+    CommandSpec commandMultiplierSet;
     MobEconomy(){}
 
     @Listener
@@ -75,7 +98,6 @@ public class MobEconomy {
     public void onServerStart(GameStartedServerEvent event) {
         Logger.info("Enabling plugin Mob Economy...");
         instance = this;
-        usersDataBank = Storage.getInstance().getUsersDataBank();
 
         loader = HoconConfigurationLoader.builder().setPath(configDir).build();
         File file = new File(configurationFile.getPath());
@@ -88,13 +110,32 @@ public class MobEconomy {
 
         loader = HoconConfigurationLoader.builder().setFile(file).build();
 
-        LoadConfig(false);
+        loadConfig(false);
+        loadLuckyPermsProvider();
 
-        playerKillMob = new PlayerKillMob();
+        playerKillMob = new PlayerKillMobListener();
         playerKillMob.moneyToDropPerEntityType = config.mobsMoneyDrop;
         Sponge.getEventManager().registerListeners(this, playerKillMob);
 
+        commandMultiplierSet = CommandSpec.builder()
+            .description(Text.of("Set player multiplier for money drops from mobs!"))
+            .permission("mobeconomy.multiplier")
+            .arguments(
+                GenericArguments.onlyOne(GenericArguments.player(Text.of("player"))),
+                GenericArguments.onlyOne(GenericArguments.doubleNum(Text.of("multiplier"))))
+            .executor(MobEconomy.getInstance())
+            .build();
+
+        Sponge.getCommandManager().register(this, commandMultiplierSet, "multiplier");
+
         Logger.info("Mob Economy initialised successfully!");
+    }
+
+    private void loadLuckyPermsProvider() {
+        Optional<ProviderRegistration<LuckPerms>> provider = Sponge.getServiceManager().getRegistration(LuckPerms.class);
+        provider.ifPresent(
+            luckPermsProviderRegistration -> luckyPermsProvider = luckPermsProviderRegistration
+                .getProvider());
     }
 
     @Listener
@@ -113,7 +154,7 @@ public class MobEconomy {
     public void onServerShutdown(GameStoppedServerEvent event) {
         playerKillMob.moneyToDropPerEntityType = config.mobsMoneyDrop;
         playerKillMob.holograms.forEach(HologramsService.Hologram::remove);
-        LoadConfig(true);
+        loadConfig(true);
     }
 
     public EconomyService getEconomyService(){
@@ -128,11 +169,9 @@ public class MobEconomy {
         return instance;
     }
 
-    public UsersDataBank getUsersDataBank() {
-        return usersDataBank;
-    }
+    public LuckPerms getLuckyPermsProvider() {return this.luckyPermsProvider;}
 
-    public void LoadConfig(boolean isValueSet){
+    public void loadConfig(boolean isValueSet){
         try {
             commentedConfigurationNode = loader.load(ConfigurationOptions.defaults().withShouldCopyDefaults(true));
             config = isValueSet ? this.config : commentedConfigurationNode.getNode("config").getValue(TypeToken.of(MainConfig.class),MainConfig.class.newInstance());
@@ -143,4 +182,45 @@ public class MobEconomy {
         }
     }
 
+    @Override
+    public CommandResult execute(CommandSource src, CommandContext args) throws CommandException {
+        if (src instanceof Player) {
+            Player playerExecuting = (Player) src;
+            Player player = args.<Player>getOne("player").get();
+            Double multiplier = args.<Double>getOne("multiplier").get();
+            setPlayerMultiplier(player.getUniqueId(), multiplier);
+            return CommandResult.success();
+        }
+        else if(src instanceof CommandBlockSource) {
+            src.sendMessage(Text.of("Command can only be executed by player or console!"));
+        }
+        return null;
+    }
+
+    public double getPlayerMultiplier(UUID player){
+        User user = null;
+        try {
+            user = MobEconomy.getInstance().getLuckyPermsProvider().getUserManager().loadUser(player).get();
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
+
+        assert user != null;
+        CachedMetaData metaData = user.getCachedData().getMetaData();
+
+        String value = metaData.getMetaValue(MobEconomy.PLAYER_MULTIPLIER_METADATA);
+        return value == null ? 1 : Double.parseDouble(value);
+    }
+
+    public void setPlayerMultiplier(UUID player, Double multiplier){
+        User user = null;
+        try {
+            user = MobEconomy.getInstance().getLuckyPermsProvider().getUserManager().loadUser(player).get();
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        }
+
+        assert user != null;
+        user.data().add(MetaNode.builder(PLAYER_MULTIPLIER_METADATA,multiplier.toString()).build());
+    }
 }
