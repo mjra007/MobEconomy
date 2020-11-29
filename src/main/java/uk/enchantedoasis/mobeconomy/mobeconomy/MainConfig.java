@@ -12,4 +12,10 @@ public class MainConfig {
     @Setting(comment = "Mobs drop")
     public HashMap<EntityType, Double> mobsMoneyDrop = new HashMap<>();
 
+    public MainConfig(HashMap<EntityType, Double> mobsMoneyDrop){
+        this.mobsMoneyDrop = mobsMoneyDrop;
+    }
+
+    public MainConfig(){}
+
 }

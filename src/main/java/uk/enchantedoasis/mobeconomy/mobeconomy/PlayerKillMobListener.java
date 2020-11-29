@@ -30,7 +30,6 @@ public class PlayerKillMobListener {
 
     //Amount of money to drop when entity gets killed
     public HashMap<EntityType, Double> moneyToDropPerEntityType = new HashMap<>();
-    public final double defaultMobMoneyDrop = 1.3d;
     public final MobsKilledHistory mobsKilledHistory = new MobsKilledHistory();
     public final ConcurrentSet<HologramsService.Hologram> holograms = new ConcurrentSet<>();
 
@@ -38,8 +37,6 @@ public class PlayerKillMobListener {
     public void PlayerKillMobHandler(DamageEntityEvent event, @First Entity entity) {
        if(event.willCauseDeath() && entity instanceof Player && !(event.getTargetEntity() instanceof Player) ){
            final Player player = (Player)entity;
-
-           moneyToDropPerEntityType.computeIfAbsent(event.getTargetEntity().getType(),(s)->moneyToDropPerEntityType.put(s,defaultMobMoneyDrop));
 
            //Calculating award
            final double moneyToAward = Math.round(moneyToDropPerEntityType.get(event.getTargetEntity().getType()) * MobEconomy.getInstance().getPlayerMultiplier(player.getUniqueId()) *100.0)/100.0;

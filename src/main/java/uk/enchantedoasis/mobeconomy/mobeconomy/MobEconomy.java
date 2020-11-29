@@ -3,8 +3,13 @@ package uk.enchantedoasis.mobeconomy.mobeconomy;
 import com.google.common.reflect.TypeToken;
 import com.google.inject.Inject;
 import de.randombyte.holograms.api.HologramsService;
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.cacheddata.CachedMetaData;
 import net.luckperms.api.model.data.DataMutateResult;
@@ -27,6 +32,8 @@ import org.spongepowered.api.command.spec.CommandExecutor;
 import org.spongepowered.api.command.spec.CommandSpec;
 import org.spongepowered.api.config.ConfigDir;
 import org.spongepowered.api.config.DefaultConfig;
+import org.spongepowered.api.entity.EntityType;
+import org.spongepowered.api.entity.living.Living;
 import org.spongepowered.api.entity.living.player.Player;
 import org.spongepowered.api.event.Listener;
 import org.spongepowered.api.event.game.state.GamePostInitializationEvent;
@@ -61,6 +68,7 @@ public class MobEconomy implements CommandExecutor {
     private static MobEconomy instance;
 
     public static final String PLAYER_MULTIPLIER_METADATA = "mobeconomy.playermultiplier";
+    public static final Double defaultMobMoneyDrop = 1.3d;
 
     private LuckPerms luckyPermsProvider;
 
@@ -86,7 +94,6 @@ public class MobEconomy implements CommandExecutor {
     CommentedConfigurationNode commentedConfigurationNode;
 
     CommandSpec commandMultiplierSet;
-    MobEconomy(){}
 
     @Listener
     @SuppressWarnings("unchecked")
@@ -97,8 +104,9 @@ public class MobEconomy implements CommandExecutor {
         loader = HoconConfigurationLoader.builder().setPath(configDir).build();
         File file = new File(configurationFile.getPath());
 
+        boolean configExists=file.exists();
         try {
-            if (!file.exists()) {
+            if (!configExists) {
                 file.createNewFile();
             }
         } catch (Exception e) { e.printStackTrace(); }
@@ -106,6 +114,7 @@ public class MobEconomy implements CommandExecutor {
         loader = HoconConfigurationLoader.builder().setFile(file).build();
 
         loadConfig(false);
+
         loadLuckyPermsProvider();
 
         playerKillMob = new PlayerKillMobListener();
@@ -148,7 +157,7 @@ public class MobEconomy implements CommandExecutor {
     public void onServerShutdown(GameStoppedServerEvent event) {
         playerKillMob.moneyToDropPerEntityType = config.mobsMoneyDrop;
         playerKillMob.holograms.forEach(HologramsService.Hologram::remove);
-        loadConfig(true);
+       // loadConfig(true);
     }
 
     public EconomyService getEconomyService(){
@@ -168,10 +177,16 @@ public class MobEconomy implements CommandExecutor {
     public void loadConfig(boolean isValueSet){
         try {
             commentedConfigurationNode = loader.load(ConfigurationOptions.defaults().withShouldCopyDefaults(true));
-            config = isValueSet ? this.config : commentedConfigurationNode.getNode("config").getValue(TypeToken.of(MainConfig.class),MainConfig.class.newInstance());
-            commentedConfigurationNode.getNode("config").setValue(TypeToken.of(MainConfig.class), config);
+            if(!isValueSet){
+                Map<EntityType, Double> livingEntities = Sponge.getRegistry().getAllOf(EntityType.class).stream()
+                    .filter(s -> Living.class.isAssignableFrom(s.getEntityClass()))
+                    .distinct()
+                    .collect(Collectors.toMap(entry -> entry, entry -> defaultMobMoneyDrop));
+                MainConfig defaultConf = new MainConfig(new HashMap<>(livingEntities));
+                config = commentedConfigurationNode.getNode("config").getValue(TypeToken.of(MainConfig.class),defaultConf);
+            }
             loader.save(commentedConfigurationNode);
-        } catch (IOException | IllegalAccessException | InstantiationException | ObjectMappingException e) {
+        } catch (IOException | ObjectMappingException e) {
             e.printStackTrace();
         }
     }
