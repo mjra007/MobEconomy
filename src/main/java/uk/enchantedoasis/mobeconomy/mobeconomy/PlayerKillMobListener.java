@@ -40,25 +40,29 @@ public class PlayerKillMobListener {
 
            //Calculating award
            final double moneyToAward = Math.round(moneyToDropPerEntityType.get(event.getTargetEntity().getType()) * MobEconomy.getInstance().getPlayerMultiplier(player.getUniqueId()) *100.0)/100.0;
-           //Add it to list to be awarded later
-           mobsKilledHistory.addMobKilledMoney(player.getUniqueId(), Cause.builder().append(event.getTargetEntity())
-                   .build(event.getContext()), moneyToAward);
 
-           //Spawn hologramw with money
-           final HologramsService.Hologram hologram = MobEconomy.getInstance().getHologramsService()
-                   .createHologram(event.getTargetEntity().getLocation().add(0,1,0), Text.of(TextColors.GREEN, TextStyles.BOLD,"+"+moneyToAward+" coins")).get();
+           if(moneyToAward>0d){
+             //Add it to list to be awarded later
+             mobsKilledHistory.addMobKilledMoney(player.getUniqueId(), Cause.builder().append(event.getTargetEntity())
+                 .build(event.getContext()), moneyToAward);
 
-           holograms.add(hologram);
+             //Spawn hologramw with money
+             final HologramsService.Hologram hologram = MobEconomy.getInstance().getHologramsService()
+                 .createHologram(event.getTargetEntity().getLocation().add(0,1,0), Text.of(TextColors.GREEN, TextStyles.BOLD,"+"+moneyToAward+" coins")).get();
 
-           Task.builder()
-                   .execute(()->{
-                       if(holograms.contains(hologram)){
-                           hologram.remove();
-                           holograms.remove(hologram);
-                       }
-                   })
-                   .delay(3, TimeUnit.SECONDS)
-                   .submit(MobEconomy.getInstance());
+             holograms.add(hologram);
+
+             Task.builder()
+                 .execute(()->{
+                   if(holograms.contains(hologram)){
+                     hologram.remove();
+                     holograms.remove(hologram);
+                   }
+                 })
+                 .delay(3, TimeUnit.SECONDS)
+                 .submit(MobEconomy.getInstance());
+           }
+
        }
     }
 
