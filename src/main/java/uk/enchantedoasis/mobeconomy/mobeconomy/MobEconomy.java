@@ -7,15 +7,10 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.cacheddata.CachedMetaData;
-import net.luckperms.api.cacheddata.CachedPermissionData;
 import net.luckperms.api.model.data.DataMutateResult;
-import net.luckperms.api.model.user.User;
-import net.luckperms.api.node.Node;
-import net.luckperms.api.node.NodeEqualityPredicate;
-import net.luckperms.api.node.metadata.NodeMetadataKey;
-import net.luckperms.api.node.types.MetaNode;
-import net.luckperms.api.node.types.PermissionNode;
-import ninja.leaping.configurate.ConfigurationOptions;
+ import net.luckperms.api.model.user.User;
+ import net.luckperms.api.node.types.MetaNode;
+ import ninja.leaping.configurate.ConfigurationOptions;
 import ninja.leaping.configurate.commented.CommentedConfigurationNode;
 import ninja.leaping.configurate.hocon.HoconConfigurationLoader;
 import ninja.leaping.configurate.loader.ConfigurationLoader;
@@ -27,6 +22,7 @@ import org.spongepowered.api.command.CommandSource;
 import org.spongepowered.api.command.args.CommandContext;
 import org.spongepowered.api.command.args.GenericArguments;
 import org.spongepowered.api.command.source.CommandBlockSource;
+import org.spongepowered.api.command.source.ConsoleSource;
 import org.spongepowered.api.command.spec.CommandExecutor;
 import org.spongepowered.api.command.spec.CommandSpec;
 import org.spongepowered.api.config.ConfigDir;
@@ -47,17 +43,16 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
+import org.spongepowered.api.text.format.TextColors;
 
 @Plugin(
         id = "mobeconomy",
         name = "mobeconomy",
-        description = "d",
-        url = "http://enchantedoasis.uk/",
         authors = {
                 "mjra007"
         },
         dependencies = {
-                @Dependency(id = "storage")
+                @Dependency(id = "luckperms")
         }
 )
 
@@ -65,7 +60,7 @@ public class MobEconomy implements CommandExecutor {
 
     private static MobEconomy instance;
 
-    public static final String PLAYER_MULTIPLIER_METADATA = "MOBECONOMY_PLAYER_MULTIPLIER";
+    public static final String PLAYER_MULTIPLIER_METADATA = "mobeconomy.playermultiplier";
 
     private LuckPerms luckyPermsProvider;
 
@@ -149,7 +144,6 @@ public class MobEconomy implements CommandExecutor {
 
     }
 
-
     @Listener
     public void onServerShutdown(GameStoppedServerEvent event) {
         playerKillMob.moneyToDropPerEntityType = config.mobsMoneyDrop;
@@ -188,13 +182,42 @@ public class MobEconomy implements CommandExecutor {
             Player playerExecuting = (Player) src;
             Player player = args.<Player>getOne("player").get();
             Double multiplier = args.<Double>getOne("multiplier").get();
-            setPlayerMultiplier(player.getUniqueId(), multiplier);
-            return CommandResult.success();
+            DataMutateResult result = setPlayerMultiplier(player.getUniqueId(), multiplier);
+
+            if(result.wasSuccessful()){
+                playerExecuting.sendMessage(Text
+                    .builder("Successfully set player's multiplier to "+multiplier+" !")
+                    .color(TextColors.GREEN).build());
+                return CommandResult.success();
+            }else{
+                playerExecuting.sendMessage(Text
+                    .builder("Could not perform multiplier change for player "+player.getName())
+                    .color(TextColors.RED).build());
+               return CommandResult.empty();
+            }
         }
         else if(src instanceof CommandBlockSource) {
             src.sendMessage(Text.of("Command can only be executed by player or console!"));
+            return CommandResult.empty();
+        }else if(src instanceof ConsoleSource){
+            ConsoleSource consoleSource = (ConsoleSource) src;
+            Player player = args.<Player>getOne("player").get();
+            Double multiplier = args.<Double>getOne("multiplier").get();
+            DataMutateResult result = setPlayerMultiplier(player.getUniqueId(), multiplier);
+
+            if(result.wasSuccessful()){
+                consoleSource.sendMessage(Text
+                    .builder("Successfully set player's multiplier to "+multiplier+" !")
+                    .color(TextColors.GREEN).build());
+                return CommandResult.success();
+            }else{
+                consoleSource.sendMessage(Text
+                    .builder("Could not perform multiplier change for player "+player.getName())
+                    .color(TextColors.RED).build());
+                return CommandResult.empty();
+            }
         }
-        return null;
+        return CommandResult.empty();
     }
 
     public double getPlayerMultiplier(UUID player){
@@ -212,7 +235,7 @@ public class MobEconomy implements CommandExecutor {
         return value == null ? 1 : Double.parseDouble(value);
     }
 
-    public void setPlayerMultiplier(UUID player, Double multiplier){
+    public DataMutateResult setPlayerMultiplier(UUID player, Double multiplier){
         User user = null;
         try {
             user = MobEconomy.getInstance().getLuckyPermsProvider().getUserManager().loadUser(player).get();
@@ -221,6 +244,18 @@ public class MobEconomy implements CommandExecutor {
         }
 
         assert user != null;
-        user.data().add(MetaNode.builder(PLAYER_MULTIPLIER_METADATA,multiplier.toString()).build());
+        DataMutateResult result;
+        CachedMetaData metaData = user.getCachedData().getMetaData();
+        if(metaData.getMeta().containsKey(PLAYER_MULTIPLIER_METADATA)){
+            String value = metaData.getMetaValue(MobEconomy.PLAYER_MULTIPLIER_METADATA);
+            assert value != null;
+            user.data().remove(MetaNode.builder(PLAYER_MULTIPLIER_METADATA,value).build());
+            this.luckyPermsProvider.getUserManager().saveUser(user);
+            result = user.data().add(MetaNode.builder(PLAYER_MULTIPLIER_METADATA,multiplier.toString()).build());
+        }else{
+            result = user.data().add(MetaNode.builder(PLAYER_MULTIPLIER_METADATA,multiplier.toString()).build());
+        }
+        this.luckyPermsProvider.getUserManager().saveUser(user);
+        return result;
     }
 }
